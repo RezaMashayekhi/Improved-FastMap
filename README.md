@@ -1,6 +1,6 @@
-# Thesis-Improved-FastMap
+# Improved-FastMap
 
-Improved FastMap heuristic under supervision of Prof. Sturtevant.
+Improved FastMap heuristic under the supervision of Prof. Sturtevant.
 
 Heuristic is an estimate of the distance between two points in a map. Hueristics are useful in heuristic search algorithms like A* and a better heuristic make the search faster. One of the simplest heuristic is the Euclidean distance.
 
@@ -13,6 +13,6 @@ Embedding a map (graph) can help us to build heuristic for it. For example, the 
 <img width= "400" alt="embedding" src="https://user-images.githubusercontent.com/29575804/177192691-4218ff5e-9b54-41d3-b44a-f5b549f4885f.png">
 </p>
 
-In this thesis, we have improved the FastMap heuristic and have made it more accurate.
+In this Master's project, we improved the FastMap heuristic and made it more accurate.
 
 The code's base has been written by Prof. Sturtevant and it has been extended by Reza Mashayekhi.
