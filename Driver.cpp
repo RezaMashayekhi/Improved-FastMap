@@ -3,7 +3,8 @@
  *  hog2
  *
  *  Created by Nathan Sturtevant on 5/31/05.
- *  Extended by Reza Mashayekhi in 2022.
+ *  Modified by Nathan Sturtevant on 02/29/20.
+ *  Extended by Reza Mashayekhi 2021-2022
  *
  * This file is part of HOG2. See https://github.com/nathansttt/hog2 for licensing information.
  *
@@ -65,7 +66,8 @@ enum heuristicVersion {
     kDH5FM4DH_Fahe = 14,
     k5FM2 = 15,
     k5FM2_Fahe = 16,
-    k5FM2MED = 17
+    k5FM2MED = 17,
+    k4FM5DH_Fahe = 18
     
 };
 
@@ -89,6 +91,8 @@ std::vector<int> ys;
 std::vector<int> largestPartNodeNumbers;
 int iindex[10];
 int stop=0;
+std::vector<int> furthPiv;
+
 
 void LoadMap(Map *m);
 void DoOneDimension(int label, double (*f)(double, double, double));
@@ -107,10 +111,13 @@ void SaveSVG();
 void DoDifferentHeuristics();
 void DoDifferentDimensions();
 void Do2Embeddings();
+void DoDHSubFurthExp();
 void CreateGraph();
 void CreateGraph4D();
 
 double ComputeHeuristic(std::vector<graphState> samples, Heuristic<graphState> *h);
+double ComputeLocalHeuristic(std::vector<graphState> samples, Heuristic<graphState> *h);
+double ComputeNRMSD(std::vector<graphState> samples, std::vector<double> pathLengths, Heuristic<graphState> *h);
 double* ComputeConfidenceInterval(std::vector<int> a);
 void ResetEdgeWeights(int label);
 void StoreEdgeWeights(int label);
@@ -235,7 +242,7 @@ private:
     Graph *g;
 };
 
-GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int startlabel, int nofmd, heuristicVersion hv, int nofCanPiv = 50, int nofSamples = 400);
+GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int startlabel, int nofmd, short nofd, Heuristic<graphState> *h, double bHE = 2, int nofCanPiv = 50, int nofSamples = 400);
 GraphHeuristicContainerE <graphState>* DoMultipleFMDHI(int label, int nofmd, short nofcp ,short nofSamples);
 
 GraphHeuristicContainerE <graphState>* DoLineH(int startlabel, int nofmd, heuristicVersion hv, int nofCanPiv = 50, int nofSamples = 400);
@@ -352,8 +359,9 @@ void CreateMap(mapType which)
         StoreEdgeWeights(kEdgeWeight+1);
         StoreMapLocInNodeLabels();
         FindLargestPart();
-        //DoDifferentHeuristics();
+        DoDifferentHeuristics();
         
+        //DoDHSubFurthExp();
         //ComputeCapturedHeuristicAtEachDimension();
         //CreateConfidenceInterval();
         //DoDifferentDimensions();
@@ -370,43 +378,43 @@ void CreateMap(mapType which)
     }
     mapChange = true;
     graphChanged = true;
-    SaveSVG();
-    //exit(0);
+    //SaveSVG();
+    exit(0);
 }
 
 
 void DoDifferentHeuristics(){
     int nofp=10;
-    int nofd=10;
-    int nofmd=5;
+    //int nofmd=8;
+    //int nofd=3;
     short nofcp=7;
     short nofSamples=400;
     
     /// FMn
     /*
-    DoDimensions(GraphSearchConstants::kFirstData, nofd, 0);
+    DoDimensions(GraphSearchConstants::kFirstData, nofp, 0);
     GraphMapHeuristicE<graphState> h00(map, g);
-    EmbeddingHeuristic<graphState> h01(g, GraphSearchConstants::kFirstData, nofd);
+    EmbeddingHeuristic<graphState> h01(g, GraphSearchConstants::kFirstData, nofp);
     GraphHeuristicContainerE <graphState> h0(g);
     h0.AddHeuristic(&h00);
     h0.AddHeuristic(&h01);
     */
     
     /// nDH
-    /*
-    DoDH(GraphSearchConstants::kFirstData + nofd, nofp);
-    DifferentialHeuristic<graphState> h10(g, GraphSearchConstants::kFirstData + nofd, nofp);
+    
+    DoDH(GraphSearchConstants::kFirstData + nofp, nofp);
+    DifferentialHeuristic<graphState> h10(g, GraphSearchConstants::kFirstData + nofp, nofp);
     GraphHeuristicContainerE <graphState> h1(g);
     // delete this when
     GraphMapHeuristicE<graphState> h00(map, g);
     h1.AddHeuristic(&h00);
     h1.AddHeuristic(&h10);
-    */
+    
     
     /// Max (FMn/2, n/2DH)
     /*
-    EmbeddingHeuristic<graphState> h21(g, GraphSearchConstants::kFirstData, nofd / 2);
-    DifferentialHeuristic<graphState> h22(g, GraphSearchConstants::kFirstData + nofd, nofp / 2);
+    EmbeddingHeuristic<graphState> h21(g, GraphSearchConstants::kFirstData, nofp/2);
+    DifferentialHeuristic<graphState> h22(g, GraphSearchConstants::kFirstData + nofp, nofp/2);
     /// GraphMapHeuristicE<graphState> z2(map,g);
     GraphHeuristicContainerE <graphState> h2(g);
     h2.AddHeuristic(&h00);
@@ -414,53 +422,96 @@ void DoDifferentHeuristics(){
     h2.AddHeuristic(&h22);
     */
     
+    
     /// (n-1)FastMap + DH
     /*
-    DoDimensions(GraphSearchConstants::kFirstData+nofp+nofd, nofd, 1);
-    EmbeddingHeuristic<graphState> h30(g, GraphSearchConstants::kFirstData+nofp+nofd, nofd);
+    DoDimensions(GraphSearchConstants::kFirstData+ 2*nofp, nofp, 1);
+    EmbeddingHeuristic<graphState> h30(g, GraphSearchConstants::kFirstData + 2*nofp, nofp);
     GraphHeuristicContainerE <graphState> h3(g);
     h3.AddHeuristic(&h00);
     h3.AddHeuristic(&h30);
     */
     
+    
     /// Max (FM(n/2-1)+DH, n/2DH)
-    ///
-    /*
-    DoDimensions(GraphSearchConstants::kFirstData+nofp+2*nofd, nofd/2, 1);
-    EmbeddingHeuristic<graphState> h41(g, GraphSearchConstants::kFirstData + nofp + 2 * nofd, nofd / 2);
-    DifferentialHeuristic<graphState> h42(g, GraphSearchConstants::kFirstData + nofd, nofp / 2);
+    
+    DoDimensions(GraphSearchConstants::kFirstData+ 3*nofp, nofp/2, 1);
+    EmbeddingHeuristic<graphState> h41(g, GraphSearchConstants::kFirstData+ 3*nofp, nofp/2);
+    DifferentialHeuristic<graphState> h42(g, GraphSearchConstants::kFirstData + nofp, nofp/2);
     //GraphMapHeuristicE<graphState> z2(map,g);
     GraphHeuristicContainerE <graphState> h4(g);
     h4.AddHeuristic(&h00);
     h4.AddHeuristic(&h41);
     h4.AddHeuristic(&h42);
-    */
+    
     
     /// Max n/2(FM + DH)
     /*
-    GraphHeuristicContainerE <graphState>* h5 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+3*nofd, nofmd, kFaheSahe);
+    //GraphHeuristicContainerE <graphState>* h5 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+3*nofd, nofmd, kFaheSahe);
     
-    GraphHeuristicContainerE <graphState>* h6 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+4*nofd, nofmd, kFM9DH);
+    GraphHeuristicContainerE <graphState>* h6 = DoMultipleFMDH(GraphSearchConstants::kFirstData+ 4*nofp, 1, 24, &h00);
     
-    GraphHeuristicContainerE <graphState>* h7 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+5*nofd, nofmd, kFM4DHDH5);
+    //GraphHeuristicContainerE <graphState>* h7 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+5*nofd, nofmd, kFM4DHDH5);
     
-    GraphHeuristicContainerE <graphState>* h8 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+6*nofd, nofmd, kDH5FM4DH);
+    //GraphHeuristicContainerE <graphState>* h8 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+6*nofd, nofmd, kDH5FM4DH);
     
-    GraphHeuristicContainerE <graphState>* h900 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+7*nofd, nofmd, k5FM2);
+    //GraphHeuristicContainerE <graphState>* h900 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+7*nofd, nofmd, k5FM2);
     
     //GraphHeuristicContainerE <graphState>* h910 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+8*nofd, nofmd, k5FM2MED);
     
-    GraphHeuristicContainerE <graphState>* h911 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+9*nofd, nofmd, kFaheSf);
+    //GraphHeuristicContainerE <graphState>* h911 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+9*nofd, nofmd, kFaheSf);
     
-    GraphHeuristicContainerE <graphState>* h912 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+10*nofd, nofmd, kFM9DH_Fahe);
-    */
-    GraphHeuristicContainerE <graphState>* h913 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+11*nofd, nofmd, kFM4DHDH5_Fahe);
+    //GraphHeuristicContainerE <graphState>* h912 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+10*nofd, nofmd, kFM9DH_Fahe);
     
-    GraphHeuristicContainerE <graphState>* h914 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+12*nofd, nofmd, kDH5FM4DH_Fahe);
+    
+    //GraphHeuristicContainerE <graphState>* h913 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+11*nofd, nofmd, kFM4DHDH5_Fahe);
+    
+    //GraphHeuristicContainerE <graphState>* h914 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+12*nofd, nofmd, kDH5FM4DH_Fahe);
     
     //GraphHeuristicContainerE <graphState>* h915 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp+13*nofd, nofmd, k5FM2_Fahe);
+    */
     
     
+    GraphHeuristicContainerE <graphState>* h5 = DoMultipleFMDH(GraphSearchConstants::kFirstData+ 4*nofp, 1, nofp/2, &h00);
+    DifferentialHeuristic<graphState> h51(g, GraphSearchConstants::kFirstData + nofp, nofp/2);
+    h5->AddHeuristic(&h51);
+    
+    
+    DifferentialHeuristic<graphState> h611(g, GraphSearchConstants::kFirstData + nofp, nofp/2);
+    GraphHeuristicContainerE <graphState> h61(g);
+    h61.AddHeuristic(&h00);
+    h61.AddHeuristic(&h611);
+    GraphHeuristicContainerE <graphState>* h6 = DoMultipleFMDH(GraphSearchConstants::kFirstData+ 5*nofp, 1, nofp/2, &h61);
+    
+    GraphHeuristicContainerE <graphState>* h7 = DoMultipleFMDH(GraphSearchConstants::kFirstData+ 6*nofp, 1, nofp, &h00);
+    
+    //GraphHeuristicContainerE <graphState>* h6 = DoMultipleFMDH(GraphSearchConstants::kFirstData+13*nofp, 8, 3, &h00);
+    /*
+    GraphHeuristicContainerE <graphState>* h500 = DoMultipleFMDH(GraphSearchConstants::kFirstData+3*nofp, 2, 12,  k4FM5DH_Fahe, 0.5);
+    GraphHeuristicContainerE <graphState>* h501 = DoMultipleFMDH(GraphSearchConstants::kFirstData+4*nofp, 3, 8,  k4FM5DH_Fahe, 0.5);
+    GraphHeuristicContainerE <graphState>* h502 = DoMultipleFMDH(GraphSearchConstants::kFirstData+5*nofp, 4, 6,  k4FM5DH_Fahe, 0.5);
+    GraphHeuristicContainerE <graphState>* h503 = DoMultipleFMDH(GraphSearchConstants::kFirstData+6*nofp, 6, 4,  k4FM5DH_Fahe, 0.5);
+    GraphHeuristicContainerE <graphState>* h504 = DoMultipleFMDH(GraphSearchConstants::kFirstData+7*nofp, 8, 3,  k4FM5DH_Fahe, 0.5);
+    GraphHeuristicContainerE <graphState>* h505 = DoMultipleFMDH(GraphSearchConstants::kFirstData+8*nofp, 12, 2,  k4FM5DH_Fahe, 0.5);
+    */
+    
+    /*
+    GraphHeuristicContainerE <graphState>* h505 = DoMultipleFMDH(GraphSearchConstants::kFirstData+nofp, 1, 24,  k4FM5DH_Fahe, 1);
+    GraphHeuristicContainerE <graphState>* h506 = DoMultipleFMDH(GraphSearchConstants::kFirstData+2*nofp, 2, 12,  k4FM5DH_Fahe, 1);
+    GraphHeuristicContainerE <graphState>* h507 = DoMultipleFMDH(GraphSearchConstants::kFirstData+3*nofp, 3, 8,  k4FM5DH_Fahe, 1);
+    GraphHeuristicContainerE <graphState>* h508 = DoMultipleFMDH(GraphSearchConstants::kFirstData+4*nofp, 4, 6,  k4FM5DH_Fahe, 1);
+    GraphHeuristicContainerE <graphState>* h509 = DoMultipleFMDH(GraphSearchConstants::kFirstData+5*nofp, 6, 4,  k4FM5DH_Fahe, 1);
+    GraphHeuristicContainerE <graphState>* h510 = DoMultipleFMDH(GraphSearchConstants::kFirstData+6*nofp, 8, 3,  k4FM5DH_Fahe, 1);
+    GraphHeuristicContainerE <graphState>* h511 = DoMultipleFMDH(GraphSearchConstants::kFirstData+7*nofp, 12, 2,  k4FM5DH_Fahe, 1);
+    
+    GraphHeuristicContainerE <graphState>* h512 = DoMultipleFMDH(GraphSearchConstants::kFirstData+8*nofp, 1, 24,  k4FM5DH_Fahe, 2);
+    GraphHeuristicContainerE <graphState>* h513 = DoMultipleFMDH(GraphSearchConstants::kFirstData+9*nofp, 2, 12,  k4FM5DH_Fahe, 2);
+    GraphHeuristicContainerE <graphState>* h514 = DoMultipleFMDH(GraphSearchConstants::kFirstData+10*nofp, 3, 8,  k4FM5DH_Fahe, 2);
+    GraphHeuristicContainerE <graphState>* h515 = DoMultipleFMDH(GraphSearchConstants::kFirstData+11*nofp, 4, 6,  k4FM5DH_Fahe, 2);
+    GraphHeuristicContainerE <graphState>* h516 = DoMultipleFMDH(GraphSearchConstants::kFirstData+12*nofp, 6, 4,  k4FM5DH_Fahe, 2);
+    GraphHeuristicContainerE <graphState>* h517 = DoMultipleFMDH(GraphSearchConstants::kFirstData+13*nofp, 8, 3,  k4FM5DH_Fahe, 2);
+    GraphHeuristicContainerE <graphState>* h518 = DoMultipleFMDH(GraphSearchConstants::kFirstData+14*nofp, 12, 2,  k4FM5DH_Fahe, 2);
+    */
     
     /// Subset DH
     /*
@@ -510,7 +561,7 @@ void DoDifferentHeuristics(){
     
     //EmbeddingHeuristic<graphState> h4(g2, GraphSearchConstants::kFirstData+nofp, nofd);
     
-    int nofh = 2;
+    int nofh = 4;
     std::vector<FILE*> files;
     cout<<"doing the search"<<endl;
     
@@ -524,15 +575,20 @@ void DoDifferentHeuristics(){
     std::vector<Heuristic<graphState>*> heuristics;
     //heuristics.push_back(&h0);
     //heuristics.push_back(&h1); heuristics.push_back(&h2);
-    //heuristics.push_back(&h3); heuristics.push_back(&h4);
-    //heuristics.push_back(&h4);
+    //heuristics.push_back(&h3);
+    heuristics.push_back(&h4);
+    heuristics.push_back(h5); heuristics.push_back(h6); heuristics.push_back(h7);
+    //heuristics.push_back(h500);heuristics.push_back(h501); heuristics.push_back(h502); heuristics.push_back(h503); heuristics.push_back(h504);
+    /*
+    heuristics.push_back(h505); heuristics.push_back(h506); heuristics.push_back(h507); heuristics.push_back(h508); heuristics.push_back(h509); heuristics.push_back(h510); heuristics.push_back(h511); heuristics.push_back(h512); heuristics.push_back(h513); heuristics.push_back(h514); heuristics.push_back(h515); heuristics.push_back(h516); heuristics.push_back(h517); heuristics.push_back(h518);
+     */
     //heuristics.push_back(h5);
     //heuristics.push_back(h6); heuristics.push_back(h7); heuristics.push_back(h8);
     //heuristics.push_back(h900); //heuristics.push_back(h92);
     //heuristics.push_back(h911); heuristics.push_back(h912); heuristics.push_back(h913);
     //heuristics.push_back(h914); heuristics.push_back(h915);
-    heuristics.push_back(h913);
-    heuristics.push_back(h914);
+    //heuristics.push_back(h913);
+    //heuristics.push_back(h914);
     
     TemplateAStar<graphState, graphMove, GraphEnvironment> astar;
     std::vector<graphState> p;
@@ -543,9 +599,10 @@ void DoDifferentHeuristics(){
     // Calculate corect length Path
     /*
     cout<<"calculateing correct length paths"<<endl;
-    srandom(68949123);
+    srandom(68949121);
     std::vector<double> pL;
     for(int j=0;j<sl->GetNumExperiments();j++){
+    //for(int j=0;j<1000;j++){
         node* startn = g->GetNode(largestPartNodeNumbers[random() % largestPartNodeNumbers.size()]);
         node* goaln = g->GetNode(largestPartNodeNumbers[random() % largestPartNodeNumbers.size()]);
         if(startn->GetLabelF(GraphSearchConstants::kXCoordinate - 1) == 1 &&
@@ -563,9 +620,10 @@ void DoDifferentHeuristics(){
         int ne=0;
         std::vector<int> expanded;
         // it should be srandom for random problems. here is srand to be consistent with previous results
-        srandom(68949123);
+        srandom(68949121);
         
         for(int j=0;j<sl->GetNumExperiments();j++){
+        //for(int j=0;j<1000;j++){
             //int j = rand() % sl->GetNumExperiments();
             Experiment e = sl->GetNthExperiment(j);
             xyLoc start, goal;
@@ -577,7 +635,6 @@ void DoDifferentHeuristics(){
             
             //node* startn = g->GetNode(largestPartNodeNumbers[random() % largestPartNodeNumbers.size()]);
             //node* goaln = g->GetNode(largestPartNodeNumbers[random() % largestPartNodeNumbers.size()]);
-            
             
             node* startn = g->GetNode(map->GetNodeNum(start.x, start.y));
             node* goaln = g->GetNode(map->GetNodeNum(goal.x, goal.y));
@@ -985,6 +1042,172 @@ void Do2Embeddings(){
     graphChanged = true;
 }
 
+void DoDHSubFurthExp(){
+    int nofp=10;
+    //short nofcp=7;
+    short nofSamples=400;
+    nofSamples = sqrt(g->GetNumNodes());
+    cout<<"nofsamples "<< nofSamples<<endl;
+    
+    int nofh = 10;
+    
+    
+    /// nDH
+    GraphMapHeuristicE<graphState> h00(map, g);
+    DoDH(GraphSearchConstants::kFirstData, nofp);
+    DifferentialHeuristic<graphState> h10(g, GraphSearchConstants::kFirstData, nofp);
+    GraphHeuristicContainerE <graphState> h1(g);
+    h1.AddHeuristic(&h00);
+    h1.AddHeuristic(&h10);
+    
+    
+    std::vector<FILE*> files;
+    cout<<"doing the search"<<endl;
+    
+    for(int i=0;i<nofh;i++){
+        std::string fname = saveDirectory + std::string("/Different_Heuristics/NoE/");
+        FILE *f = fopen((fname+mapName+" - h"+ to_string(i) +".txt").c_str(), "w+");
+        files.push_back(f);
+    }
+    
+    ResetEdgeWeights(kEdgeWeight+1);
+    std::vector<Heuristic<graphState>*> heuristics;
+    heuristics.push_back(&h1);
+    
+    
+    for (int i=1; i<nofh; i++){
+        DoGDH(GraphSearchConstants::kFirstData + i * nofp, nofp, 10 + i * nofp , nofSamples);
+        GraphHeuristicContainerE <graphState>* h2 = new GraphHeuristicContainerE<graphState>(g);
+        DifferentialHeuristic<graphState>* h21= new DifferentialHeuristic<graphState> (g, GraphSearchConstants::kFirstData + i * nofp, nofp);
+        h2->AddHeuristic(&h00);
+        h2->AddHeuristic(h21);
+        heuristics.push_back(h2);
+    }
+
+    
+    
+    TemplateAStar<graphState, graphMove, GraphEnvironment> astar;
+    std::vector<graphState> p;
+    ZeroHeuristic<graphState> z;
+    astar.InitializeSearch(ge, 0 , 1, p);
+    
+    // Calculate corect length Path
+    /*
+    cout<<"calculateing correct length paths"<<endl;
+    srandom(68949121);
+    std::vector<double> pL;
+    for(int j=0;j<sl->GetNumExperiments();j++){
+    //for(int j=0;j<1000;j++){
+        node* startn = g->GetNode(largestPartNodeNumbers[random() % largestPartNodeNumbers.size()]);
+        node* goaln = g->GetNode(largestPartNodeNumbers[random() % largestPartNodeNumbers.size()]);
+        if(startn->GetLabelF(GraphSearchConstants::kXCoordinate - 1) == 1 &&
+           goaln->GetLabelF(GraphSearchConstants::kXCoordinate - 1) == 1){
+            astar.SetHeuristic(&z);
+            astar.GetPath(ge, startn->GetNum(), goaln->GetNum(), p);
+            pL.push_back(ge->GetPathLength(p));
+        }
+    }
+    */
+    
+    
+    //cout<<h6->HCost(15, 1345)<<endl;
+    for(int i=0;i<nofh;i++){
+        int ne=0;
+        std::vector<int> expanded;
+        // it should be srandom for random problems. here is srand to be consistent with previous results
+        srandom(68949121);
+        
+        for(int j=0;j<sl->GetNumExperiments();j++){
+        //for(int j=0;j<1000;j++){
+            //int j = rand() % sl->GetNumExperiments();
+            Experiment e = sl->GetNthExperiment(j);
+            xyLoc start, goal;
+            start.x = e.GetStartX();
+            start.y = e.GetStartY();
+            goal.x = e.GetGoalX();
+            goal.y = e.GetGoalY();
+            
+            
+            //node* startn = g->GetNode(largestPartNodeNumbers[random() % largestPartNodeNumbers.size()]);
+            //node* goaln = g->GetNode(largestPartNodeNumbers[random() % largestPartNodeNumbers.size()]);
+            
+            node* startn = g->GetNode(map->GetNodeNum(start.x, start.y));
+            node* goaln = g->GetNode(map->GetNodeNum(goal.x, goal.y));
+            
+            
+            //cout<<startn->GetNum()<<" ";
+            // If it was in the largest part
+            if(startn->GetLabelF(GraphSearchConstants::kXCoordinate - 1) == 1 &&
+               goaln->GetLabelF(GraphSearchConstants::kXCoordinate - 1) == 1){
+                astar.SetHeuristic(heuristics[i]);
+                //cout<<"1"<<endl;
+                astar.GetPath(ge, startn->GetNum(), goaln->GetNum(), p);
+                //cout<<"2"<<endl;
+                //astar.GetPath(gge,startn,goaln,p);
+                int ex = astar.GetNodesExpanded();
+                expanded.push_back(ex);
+                ne+=ex;
+                
+                // Rnadom problems path length checking
+                /*
+                if (abs(ge->GetPathLength(p) - pL[j])>0.01){
+                    cout<<"Not correct Length"<<endl;
+                    cout<<"Start: "<<ge->GetLocation(startn->GetNum()).x<<" "<< ge->GetLocation(startn->GetNum()).y<<" Goal:"<<ge->GetLocation(goaln->GetNum()).x<<" "<<ge->GetLocation(goaln->GetNum()).y<<endl;
+                    cout<<pL[j]<<" "<<ge->GetPathLength(p)<<endl;
+                    exit(0);
+                }
+                */
+                
+                // Scenario path length checking
+                
+                if (abs( ge->GetPathLength(p) - e.GetDistance())>0.01){
+                    cout<<"Not correct Length"<<endl;
+                    cout<<"Start: "<<start.x<<" "<< start.y<<" Goal:"<<goal.x<<" "<<goal.y<<endl;
+                    //break;
+                    exit(0);
+                }
+                
+                
+                
+                //cout<<j<<endl;
+                //cout<<gge->GetPathLength(p)<<endl;
+                //cout<<astar.GetNodesExpanded()<<" ";
+            }
+        }
+        cout<<"average nodes expanded by h"<<i<<": "<<ne/sl->GetNumExperiments()<<endl;
+        //cout<<"? wins: "<<expanded1.size()<<endl;
+        int a [expanded.size()];
+        for(int j=0; j < expanded.size(); j++)
+        {
+            a[j]=expanded[j];
+        //    cout<< expanded[i]<< " ";
+        }
+        sort(a, a+expanded.size());
+        for(int j=0; j < expanded.size(); j++)
+        {
+            //cout<< a[j]<< " ";
+            string s=to_string(a[j])+"\n";
+            fputs(s.c_str(), files[i]);
+            fflush(files[i]);
+        }
+        
+        cout<<"\n Median of ?? in ? is: "<<Median(a,expanded.size());
+        cout<<endl;
+        fclose(files[i]);
+        //exit(0);
+    }
+    
+    ge->SetDrawEdgeCosts(false);
+    ge->SetColor(Colors::white);
+    if (doLerp)
+    {
+        basege->SetDrawEdgeCosts(false);
+        basege->SetColor(Colors::white);
+    }
+    mapChange = true;
+    graphChanged = true;
+}
+
 void StoreEdgeWeights(int label){
      for (int x = 0; x < g->GetNumEdges(); x++)
     {
@@ -1026,7 +1249,8 @@ double OE(double dai, double dib, double dab){
 }
 
 double DH(double dai, double dib, double dab){
-    return dai;
+    //return dai;
+    return dib;
 }
 
 double HDH(double dai, double dib, double dab){
@@ -1046,6 +1270,7 @@ void DoDimensions(int startlabel, int nofd, int which)
         for(int i=0;i<nofd-1;i++){
             DoOneDimension(startlabel+i,OE);
         }
+        if (nofd>0)
         for(int i=nofd-1;i<nofd;i++){
             DoOneDimension(startlabel+i,DH);
         }
@@ -1418,7 +1643,7 @@ void DoTwoDimensions (int label, double (*f)(double,double,double), graphState s
     
 }
 
-void DoOneDimension (int label, double (*f)(double,double,double), GraphHeuristicContainerE<graphState>* h, pivotsVersion pV, graphState ss = NULL, graphState tt = NULL){
+void DoOneDimension (int label, double (*f)(double,double,double), GraphHeuristicContainerE<graphState>* h, pivotsVersion pV, double bHE, graphState ss = NULL, graphState tt = NULL){
     //ResetSeenLabels();
     printf("\n Dimension %d \n\n", label);
     TemplateAStar<graphState, graphMove, GraphEnvironment> astarf;
@@ -1456,8 +1681,8 @@ void DoOneDimension (int label, double (*f)(double,double,double), GraphHeuristi
             astarf.DoSingleSearchStep(p);
             astarf.GetClosedListGCost(m, gc);
             double hCost = h->HCost(s,m);
-            if ((gc-hCost)>max){
-                max=gc-hCost;
+            if (gc + bHE*(gc-hCost)>max){            // BE CAREFUL ABOUT THIS PART
+                max= gc + bHE*(gc-hCost);              //
                 t=m;
             }
         }
@@ -1476,10 +1701,13 @@ void DoOneDimension (int label, double (*f)(double,double,double), GraphHeuristi
                 astarb.DoSingleSearchStep(p);
                 astarb.GetClosedListGCost(m, gc);
                 double hCost = h->HCost(t,m);
-                if ((gc-hCost) > max){
-                    max = gc - hCost;
+                
+                if (gc+ bHE*(gc-hCost) > max){             // BE CAREFUL
+                    max = gc+ bHE*(gc - hCost);              //
                     s = m;
                 }
+                
+                //s = m;
             }
         }
     }
@@ -1545,20 +1773,25 @@ void DoOneDimension (int label, double (*f)(double,double,double), GraphHeuristi
 }
 
 
-GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heuristicVersion hV, int nofCanPiv, int nofSamples){
-    GraphMapHeuristicE<graphState>* h0=new GraphMapHeuristicE<graphState>(map, g);
+GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, short nofd, Heuristic<graphState> *h0, double bHE, int nofCanPiv, int nofSamples){
+    //GraphMapHeuristicE<graphState>* h0=new GraphMapHeuristicE<graphState>(map, g);
     GraphHeuristicContainerE <graphState>* h=new GraphHeuristicContainerE <graphState> (g);
     h->AddHeuristic(h0);
+    heuristicVersion hV = k4FM5DH_Fahe;
+
+    TemplateAStar<graphState, graphMove, GraphEnvironment> astarf;
+    ZeroHeuristic<graphState> z;
+    std::vector<graphState> p;
     
     
     if (hV == kFaheShe || hV == kFaheSahe){
         for (short i = 0; i < nofmd*2; i = i+2) {
             if(hV == kFaheShe){
-                DoOneDimension(label + i, OE, h, kR);
+                DoOneDimension(label + i, OE, h, kR, 1);
                 EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + i, 1);
                 GraphHeuristicContainerE <graphState>* hh = new GraphHeuristicContainerE <graphState> (g);
                 hh->AddHeuristic(eH);
-                DoOneDimension(label + i + 1, DH, hh, kO);
+                DoOneDimension(label + i + 1, DH, hh, kO, 1);
                 delete eH;
                 delete hh;
                 eH = new EmbeddingHeuristic<graphState>(g, label + i, 2);
@@ -1566,10 +1799,10 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
             }
             
             if(hV == kFaheSahe){
-                DoOneDimension(label + i, OE, h, kR);
+                DoOneDimension(label + i, OE, h, kR, bHE);
                 EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + i, 1);
                 h->AddHeuristic(eH);
-                DoOneDimension(label + i + 1, DH, h, kO);
+                DoOneDimension(label + i + 1, DH, h, kO, bHE);
                 h->RemoveHeuristic();
                 delete eH;
                 eH = new EmbeddingHeuristic<graphState>(g, label + i, 2);
@@ -1587,9 +1820,133 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
         }
     }
     
+    else if (hV == k4FM5DH_Fahe){
+        /*
+        DoDimensions(label, 6, 1);
+        EmbeddingHeuristic<graphState>*  eH = new EmbeddingHeuristic<graphState>(g, label, 6);
+        h->AddHeuristic(eH);
+        */
+        ResetEdgeWeights(kEdgeWeight+1);
+        for (short i = 0; i < nofmd*nofd; i = i + nofd) {
+            
+            // each dimension he
+            /*
+            for (short j = 0; j<5; j++){
+                DoOneDimension(label + i + j, OE, h, kR);
+                EmbeddingHeuristic<graphState>*  eH = new EmbeddingHeuristic<graphState>(g, label + i, j+1);
+                if(j>0)
+                    h->RemoveHeuristic();
+                h->AddHeuristic(eH);
+            }
+            DoOneDimension(label + i + 5, DH, h, kR);
+            h->RemoveHeuristic();
+            */
+            
+            
+            
+            DoOneDimension(label + i, OE, h, kR, bHE);
+            DoDimensions(label + i + 1, nofd-1, 1);
+            EmbeddingHeuristic<graphState>*  eH = new EmbeddingHeuristic<graphState>(g, label + i, nofd);
+            h->AddHeuristic(eH);
+            ResetEdgeWeights(kEdgeWeight+1);
+            
+        }
+         
+        
+        /*
+        for (short i = 0; i < furthPiv.size(); i++){
+            xs.push_back(ge->GetLocation(furthPiv[i]).x);
+            ys.push_back(ge->GetLocation(furthPiv[i]).y);
+        }
+        
+        ZeroHeuristicE<graphState>* h00=new ZeroHeuristicE<graphState>(map, g);
+        GraphHeuristicContainerE <graphState>* hz=new GraphHeuristicContainerE <graphState> (g);
+        hz->AddHeuristic(h00);
+        
+        std::vector<int> p1;
+        std::vector<int> p2;
+        
+        
+        for (short i = 0; i < nofmd*2; i = i + 2)
+            p1.push_back(furthPiv[i]);
+        for (short i = 0; i < p1.size(); i = i + 1)
+            furthPiv.erase(find(furthPiv.begin(), furthPiv.end(), p1[i]));
+        for (short i = 0; i < p1.size(); i = i + 1){
+            astarf.SetStopAfterGoal(false);
+            astarf.InitializeSearch(ge, p1[i], 0, p);
+            astarf.SetHeuristic(&z);
+            while (astarf.GetNumOpenItems() > 0)
+                astarf.DoSingleSearchStep(p);
+            
+            short v = 0;
+            double g;
+            double max = 0;
+            for (short j = 0; j < furthPiv.size(); j = j + 1){
+                astarf.GetClosedListGCost(furthPiv[j], g);
+                if (g>max){
+                    max = g;
+                    v = j;
+                }
+            }
+            p2.push_back(furthPiv[v]);
+            furthPiv.erase(furthPiv.begin() + v);
+        }
+        
+        
+        for (short i = 0; i < p1.size(); i++) {
+            DoOneDimension(label + i*nofd, OE, hz, kO, p1[i], p2[i]);
+            DoDimensions(label + i*nofd + 1, nofd - 1, 1);
+            EmbeddingHeuristic<graphState>*  eH = new EmbeddingHeuristic<graphState>(g, label + i*nofd, nofd);
+            h->AddHeuristic(eH);
+            ResetEdgeWeights(kEdgeWeight+1);
+        }
+        
+         
+        /*
+        for (short i = 0; i < nofmd*2; i = i + 2) {
+            DoOneDimension(label + i, OE, hz, kO, furthPiv[i], furthPiv[i+1]);
+            DoDimensions(label + i + 1, 1, 1);
+            EmbeddingHeuristic<graphState>*  eH = new EmbeddingHeuristic<graphState>(g, label + i, 2);
+            h->AddHeuristic(eH);
+            ResetEdgeWeights(kEdgeWeight+1);
+        }
+        */
+        
+        
+         
+        
+        /*
+        xs.push_back(ge->GetLocation(448518).x);
+        ys.push_back(ge->GetLocation(448518).y);
+        
+        xs.push_back(ge->GetLocation(320722).x);
+        ys.push_back(ge->GetLocation(320722).y);
+        */
+        /*
+        xs.push_back(ge->GetLocation(333905).x);
+        ys.push_back(ge->GetLocation(333905).y);
+        
+        xs.push_back(ge->GetLocation(39227).x);
+        ys.push_back(ge->GetLocation(39227).y);
+        /*
+        xs.push_back(ge->GetLocation(363).x);
+        ys.push_back(ge->GetLocation(363).y);
+        
+        xs.push_back(ge->GetLocation(381179).x);
+        ys.push_back(ge->GetLocation(381179).y);
+        
+        xs.push_back(ge->GetLocation(335369).x);
+        ys.push_back(ge->GetLocation(335369).y);
+        
+        xs.push_back(ge->GetLocation(40645).x);
+        ys.push_back(ge->GetLocation(40645).y);
+         */
+    }
+    
+    
     else if (hV == kFaheSf){
         for (short i = 0; i < nofmd*2; i = i+2) {
-            DoOneDimension(label + i, OE, h, kR);
+            DoOneDimension(label + i, OE, h, kR, bHE);
             DoOneDimension(label + i + 1, DH);
             EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + i, 2);
             h->AddHeuristic(eH);
@@ -1598,17 +1955,17 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
     }
         
     else if (hV == kFM9DH){
-        DoOneDimension(label, OE, h, kR);
+        DoOneDimension(label, OE, h, kR, bHE);
         EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label, 1);
         for (int i = 1; i < 9; i++){
             h->AddHeuristic(eH);
-            DoOneDimension(label + i, OE, h, kO);
+            DoOneDimension(label + i, OE, h, kO, bHE);
             h->RemoveHeuristic();
             delete eH;
             eH = new EmbeddingHeuristic<graphState>(g, label, i+1);
         }
         h->AddHeuristic(eH);
-        DoOneDimension(label + 9, DH, h, kO);
+        DoOneDimension(label + 9, DH, h, kO, bHE);
         h->RemoveHeuristic();
         delete eH;
         eH = new EmbeddingHeuristic<graphState>(g, label, 10);
@@ -1617,7 +1974,7 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
     }
         
     else if (hV == kFM9DH_Fahe){
-        DoOneDimension(label, OE, h, kR);
+        DoOneDimension(label, OE, h, kR, bHE);
         DoDimensions(label + 1, 9, 1);
         EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label, 10);
         h->AddHeuristic(eH);
@@ -1625,17 +1982,17 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
     }
     
     else if (hV == kFM4DHDH5){
-        DoOneDimension(label, OE, h, kR);
+        DoOneDimension(label, OE, h, kR, bHE);
         EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label, 1);
         for (int i = 1; i < 4; i++){
             h->AddHeuristic(eH);
-            DoOneDimension(label + i, OE, h, kO);
+            DoOneDimension(label + i, OE, h, kO, bHE);
             h->RemoveHeuristic();
             delete eH;
             eH = new EmbeddingHeuristic<graphState>(g, label, i+1);
         }
         h->AddHeuristic(eH);
-        DoOneDimension(label + 4, DH, h, kO);
+        DoOneDimension(label + 4, DH, h, kO, bHE);
         h->RemoveHeuristic();
         delete eH;
         eH = new EmbeddingHeuristic<graphState>(g, label, 5);
@@ -1648,7 +2005,7 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
     }
         
     else if (hV == kFM4DHDH5_Fahe){
-        DoOneDimension(label, OE, h, kR);
+        DoOneDimension(label, OE, h, kR, bHE);
         DoDimensions(label + 1, 4, 1);
         EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label, 5);
         h->AddHeuristic(eH);
@@ -1664,17 +2021,17 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
         DifferentialHeuristic<graphState>* dh = new DifferentialHeuristic<graphState>(g, label, 5);
         h->AddHeuristic(dh);
         
-        DoOneDimension(label + 5, OE, h, kR);
+        DoOneDimension(label + 5, OE, h, kR, bHE);
         EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + 5, 1);
         for (int i = 6; i < 9; i++){
             h->AddHeuristic(eH);
-            DoOneDimension(label + i, OE, h, kO);
+            DoOneDimension(label + i, OE, h, kO, bHE);
             h->RemoveHeuristic();
             delete eH;
             eH = new EmbeddingHeuristic<graphState>(g, label + i, i+1);
         }
         h->AddHeuristic(eH);
-        DoOneDimension(label + 9, DH, h, kO);
+        DoOneDimension(label + 9, DH, h, kO, bHE);
         h->RemoveHeuristic();
         delete eH;
         eH = new EmbeddingHeuristic<graphState>(g, label + 5, 5);
@@ -1687,7 +2044,7 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
         DifferentialHeuristic<graphState>* dh = new DifferentialHeuristic<graphState>(g, label, 5);
         h->AddHeuristic(dh);
         
-        DoOneDimension(label + 5, OE, h, kR);
+        DoOneDimension(label + 5, OE, h, kR, bHE);
         DoDimensions(label + 6, 4, 1);
         EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + 5, 5);
         h->AddHeuristic(eH);
@@ -1696,10 +2053,10 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
     
     else if (hV == k5FM2){
         for (short i = 0; i < nofmd*2; i = i+2) {
-            DoOneDimension(label + i, OE, h, kR);
+            DoOneDimension(label + i, OE, h, kR, bHE);
             EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + i, 1);
             h->AddHeuristic(eH);
-            DoOneDimension(label + i + 1, OE, h, kO);
+            DoOneDimension(label + i + 1, OE, h, kO, bHE);
             h->RemoveHeuristic();
             delete eH;
             eH = new EmbeddingHeuristic<graphState>(g, label + i, 2);
@@ -1710,7 +2067,7 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
     
     else if (hV == k5FM2_Fahe){
         for (short i = 0; i < nofmd*2; i = i+2) {
-            DoOneDimension(label + i, OE, h, kR);
+            DoOneDimension(label + i, OE, h, kR, bHE);
             DoOneDimension(label + i + 1, OE);
             EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + i, 2);
             h->AddHeuristic(eH);
@@ -1726,6 +2083,8 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
             ResetEdgeWeights(kEdgeWeight+1);
         }
     }
+    
+  
     
     else if (hV == kSubFheShe){
         
@@ -1837,7 +2196,7 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
             EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + (j * 2), 1);
             GraphHeuristicContainerE <graphState>* hh = new GraphHeuristicContainerE <graphState> (g);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 2) + 1, DH, hh, kO);
+            DoOneDimension(label + (j * 2) + 1, DH, hh, kO, bHE);
             delete eH;
             delete hh;
             ResetEdgeWeights(kEdgeWeight+1);
@@ -1974,7 +2333,7 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
                 GraphHeuristicContainerE <graphState>* hh = new GraphHeuristicContainerE <graphState> (g);
                 hh->AddHeuristic(eH);
                 h->AddHeuristic(eH);
-                DoOneDimension(label + i * 20 + j * 2 + 1, DH, hh, kO);
+                DoOneDimension(label + i * 20 + j * 2 + 1, DH, hh, kO, bHE);
                 h->RemoveHeuristic();
                 delete eH;
                 delete hh;
@@ -2088,11 +2447,11 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
             EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + (j * 3), 1);
             GraphHeuristicContainerE <graphState>* hh = new GraphHeuristicContainerE <graphState> (g);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 3) + 1, OE, hh, kO);
+            DoOneDimension(label + (j * 3) + 1, OE, hh, kO, bHE);
             hh->RemoveHeuristic();
             eH = new EmbeddingHeuristic<graphState>(g, label + (j * 3), 2);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 3) + 2, DH, hh, kO);
+            DoOneDimension(label + (j * 3) + 2, DH, hh, kO, bHE);
             delete eH;
             delete hh;
             /*
@@ -2246,15 +2605,15 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
             EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + (j * 4), 1);
             GraphHeuristicContainerE <graphState>* hh = new GraphHeuristicContainerE <graphState> (g);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 4) + 1, OE, hh, kO);
+            DoOneDimension(label + (j * 4) + 1, OE, hh, kO, bHE);
             hh->RemoveHeuristic();
             eH = new EmbeddingHeuristic<graphState>(g, label + (j * 4), 2);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 4) + 2, OE, hh, kO);
+            DoOneDimension(label + (j * 4) + 2, OE, hh, kO, bHE);
             hh->RemoveHeuristic();
             eH = new EmbeddingHeuristic<graphState>(g, label + (j * 4), 3);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 4) + 3, DH, hh, kO);
+            DoOneDimension(label + (j * 4) + 3, DH, hh, kO, bHE);
             delete eH;
             delete hh;
             /*
@@ -2394,19 +2753,19 @@ GraphHeuristicContainerE <graphState>* DoMultipleFMDH(int label, int nofmd, heur
             EmbeddingHeuristic<graphState>* eH = new EmbeddingHeuristic<graphState>(g, label + (j * 5), 1);
             GraphHeuristicContainerE <graphState>* hh = new GraphHeuristicContainerE <graphState> (g);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 5) + 1, OE, hh, kO);
+            DoOneDimension(label + (j * 5) + 1, OE, hh, kO, bHE);
             hh->RemoveHeuristic();
             eH = new EmbeddingHeuristic<graphState>(g, label + (j * 5), 2);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 5) + 2, OE, hh, kO);
+            DoOneDimension(label + (j * 5) + 2, OE, hh, kO, bHE);
             hh->RemoveHeuristic();
             eH = new EmbeddingHeuristic<graphState>(g, label + (j * 5), 3);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 5) + 3, OE, hh, kO);
+            DoOneDimension(label + (j * 5) + 3, OE, hh, kO, bHE);
             hh->RemoveHeuristic();
             eH = new EmbeddingHeuristic<graphState>(g, label + (j * 5), 4);
             hh->AddHeuristic(eH);
-            DoOneDimension(label + (j * 5) + 4, DH, hh, kO);
+            DoOneDimension(label + (j * 5) + 4, DH, hh, kO, bHE);
             delete eH;
             delete hh;
             /*
@@ -2803,8 +3162,12 @@ void DoDH(int startlabel, int nofp)
         pivots.push_back(s);
     }
 
-    for(int j = 0; j < nofp; j++)
-            cout<<pivots[j]<<" ";
+    for(int j = 0; j < nofp; j++){
+        cout<<pivots[j]<<" ";
+        furthPiv.push_back(pivots[j]);
+    }
+            
+    
     //xs.push_back(ge->GetLocation(pivots[i]).x);
     //ys.push_back(ge->GetLocation(pivots[i]).y);
     cout<<endl;
@@ -2845,9 +3208,10 @@ void DoGDH(int startlabel, int nofp, short nofcp, short nofSamples){
     h.AddHeuristic(&h0);
     
     node *n;
-    
     graphState s;
-    int k=4;
+    
+    xs.clear();
+    ys.clear();
     
     // Samples
     std::vector<graphState> samples;
@@ -2859,19 +3223,38 @@ void DoGDH(int startlabel, int nofp, short nofcp, short nofSamples){
             n = g->GetRandomNode();
             foundNewSample = true;
             for(int j=0;j<i;j++){
-                if(samples[j]==n->GetNum()){
+                // not in the largest part or repetitive
+                if(n->GetLabelF(GraphSearchConstants::kXCoordinate - 1) != 1 || samples[j]==n->GetNum()){
                     foundNewSample = false;
                     break;
                 }
             }
+            
         }
         samples.push_back(n->GetNum());
     }
     
+    // Showing samples
+    /*
+    for (int i = 0; i < samples.size(); i++){
+        xs.push_back(ge->GetLocation(samples[i]).x);
+        ys.push_back(ge->GetLocation(samples[i]).y);
+    }
+    */
+    
+    //initialize a*
+    srandom(78671);
+    n = g->GetRandomNode();
+    // Find a node in largest part
+    while (n->GetLabelF(GraphSearchConstants::kXCoordinate - 1) != 1){
+        n = g->GetRandomNode();
+    }
+    
     astarf.SetStopAfterGoal(false);
-    astarf.InitializeSearch(ge, n->GetNum() , 0, p);
+    astarf.InitializeSearch(ge, n->GetNum() , n->GetNum(), p);
     astarf.SetHeuristic(&z);
     
+    // finding fist pivot
     while (astarf.GetNumOpenItems() > 0)
     {
         s = astarf.GetOpenItem(0).data;
@@ -2894,6 +3277,8 @@ void DoGDH(int startlabel, int nofp, short nofcp, short nofSamples){
         }
         pivots.push_back(s);
     }
+    
+    
     
     /*
     for (int i=20; i<nofcp; i++){
@@ -2919,10 +3304,14 @@ void DoGDH(int startlabel, int nofp, short nofcp, short nofSamples){
         //pivots.push_back(random()%g->GetNumNodes());
     }
      */
+
+    // pivots furthust in he
+    srand(57);
     graphState t,m;
     for (int i=20; i<nofcp; i++){
-        n = g->GetRandomNode();
-        s = n->GetNum();
+        // n = g->GetRandomNode();
+        // s = n->GetNum();
+        s = samples[rand()%samples.size()];
         astarf.SetStopAfterGoal(false);
         astarf.InitializeSearch(ge, s, 0, p);
         astarf.SetHeuristic(&z);
@@ -2939,6 +3328,15 @@ void DoGDH(int startlabel, int nofp, short nofcp, short nofSamples){
                 t=m;
             }
         }
+        n = g->GetNode(t);
+        
+        while(std::find(pivots.begin(), pivots.end(), t) != pivots.end() || n->GetLabelF(GraphSearchConstants::kXCoordinate - 1) != 1){
+            //cout<<"tek "<<t<<endl;
+            
+            t = g->GetRandomNode()->GetNum();
+            n = g->GetNode(t);
+        }
+        
         pivots.push_back(t);
     }
     
@@ -3012,6 +3410,11 @@ void DoGDH(int startlabel, int nofp, short nofcp, short nofSamples){
         }
     }
     
+    
+    for (int i = 0; i < pivots.size(); i++){
+        xs.push_back(ge->GetLocation(pivots[i]).x);
+        ys.push_back(ge->GetLocation(pivots[i]).y);
+    }
     
     std::vector<graphState> rpivots;
     
@@ -3117,6 +3520,44 @@ double ComputeHeuristic(std::vector<graphState> samples, Heuristic<graphState> *
     return cost;
 }
 
+double ComputeLocalHeuristic(Heuristic<graphState> *h){
+    double cost=0;
+    for(int i=0; i<g->GetNumEdges(); i++){
+        edge *e = g->GetEdge(i);
+        if (g->GetNode(e->getFrom())->GetLabelF(GraphSearchConstants::kXCoordinate - 1) == 1){
+            cost += h->HCost(e->getFrom(), e->getTo());
+        }
+    }
+    return cost;
+}
+
+double ComputeNRMSD(std::vector<graphState> pairs, std::vector<double> pL, Heuristic<graphState> *h){
+    double sigma = 0;
+    int s = pL.size();
+    double sum = 0;
+    double dsum = 0;
+    for(int i = 0; i < s; i++){
+        double x = h->HCost(pairs[i*2], pairs[i*2+1]);
+        double d = pL[i];
+        dsum += d;
+        sum += pow(d - x, 2);
+    }
+    sigma = std::sqrt((double)(sum/s));
+    return (double)(sigma / (dsum/s));
+}
+
+
+double TotalWeight(){
+    double t = 0;
+    for(int i=0; i<g->GetNumEdges(); i++){
+        edge *e = g->GetEdge(i);
+        if (g->GetNode(e->getFrom())->GetLabelF(GraphSearchConstants::kXCoordinate - 1) == 1){
+            t += e->GetWeight();
+        }
+    }
+    return t;
+}
+
 double ComputeHeuristicScen(Heuristic<graphState> *h){
     double cost=0;
     /*for(int i = 0; i < samples.size(); i++){
@@ -3129,6 +3570,9 @@ double ComputeHeuristicScen(Heuristic<graphState> *h){
 }
 
 void ComputeCapturedHeuristicAtEachDimension(){
+    
+    // FM10 vs FM9DH
+    /*
     std::vector<graphState> samples;
     int nofp=10;
     int nofd=10;
@@ -3162,22 +3606,159 @@ void ComputeCapturedHeuristicAtEachDimension(){
         if (i != 1){
             for (int j = 0; j < nofd; j++){
                 EmbeddingHeuristic<graphState> hs(g, i * nofd + GraphSearchConstants::kFirstData + j, 1);
-                cout<<"h"<<i<<" d"<<j<<" "<<ComputeHeuristic(samples, &hs)<<endl;
-                string s = "d" + to_string(j) + " " + to_string(ComputeHeuristic(samples, &hs)) + "\n";
+                double cH = ComputeHeuristic(samples, &hs);
+                cout<<"h"<<i<<" d"<<j<<" "<<cH<<endl;
+                string s = "d" + to_string(j) + " " + to_string(cH) + "\n";
                 fputs(s.c_str(), files[i]);
                 fflush(files[i]);
             }
         }
         else{
             EmbeddingHeuristic<graphState> hs(g, i * nofd + GraphSearchConstants::kFirstData + 9, 1);
-            cout<<"h"<<i<<" d"<<"9"<<" "<<ComputeHeuristic(samples, &hs)<<endl;
-            string s = "d" + to_string(9) + " " + to_string(ComputeHeuristic(samples, &hs)) + "\n";
+            double cH = ComputeHeuristic(samples, &hs);
+            cout<<"h"<<i<<" d"<<"9"<<" "<<cH<<endl;
+            string s = "d" + to_string(9) + " " + to_string(cH) + "\n";
             fputs(s.c_str(), files[i]);
             fflush(files[i]);
         }
         fclose(files[i]);
     }
+    */
     
+    
+    // How much residual is captured fm 10 vs dh10, dh, FMDH, FM2DH
+    
+    std::vector<graphState> samples;
+    int nofp=10;
+    int nofF = 3;
+    std::vector<FILE*> files;
+    cout<<"Computing heuristics"<<endl;
+    
+    for(int i=0;i<nofF;i++){
+        std::string fname = saveDirectory + std::string("/Different_Heuristics/NoE/");
+        FILE *f = fopen((fname+mapName+" - h"+ to_string(i) + "- Capt" + ".txt").c_str(), "w+");
+        files.push_back(f);
+    }
+
+    ResetEdgeWeights(kEdgeWeight+1);
+    for (int i = 0; i < largestPartNodeNumbers.size(); i++){
+        samples.push_back(largestPartNodeNumbers[i]);
+    }
+    
+    srandom(12312);
+    DoDimensions(GraphSearchConstants::kFirstData, nofp, 0);
+    srandom(12312);
+    DoDH(GraphSearchConstants::kFirstData + nofp, nofp);
+    //double total = TotalWeight();
+    
+    for (int i = 0; i<nofp; i++){
+        //FM
+        EmbeddingHeuristic<graphState>* h0 = new EmbeddingHeuristic<graphState>(g, GraphSearchConstants::kFirstData, i+1);
+        double cH = ComputeHeuristic(samples, h0);
+        //double cH = ComputeLocalHeuristic(hs);
+        delete (h0);
+        cout<<"h"<<i<<" d"<<i<<" "<<cH<<endl;
+        string s = "d" + to_string(i) + " " + to_string(cH) + "\n";
+        fputs(s.c_str(), files[0]);
+        fflush(files[0]);
+        
+        //DH
+        DifferentialHeuristic<graphState>* h1 = new DifferentialHeuristic<graphState>(g, GraphSearchConstants::kFirstData + nofp, i+1);
+        cH = ComputeHeuristic(samples, h1);
+        //double cH = ComputeLocalHeuristic(hs);
+        delete (h1);
+        cout<<"h"<<i<<" d"<<i<<" "<<cH<<endl;
+        s = "d" + to_string(i) + " " + to_string(cH) + "\n";
+        fputs(s.c_str(), files[1]);
+        fflush(files[1]);
+        
+        //FMDH
+        srandom(12312);
+        DoDimensions(GraphSearchConstants::kFirstData + 2*nofp, i + 1, 1);
+        EmbeddingHeuristic<graphState>* h2 = new EmbeddingHeuristic<graphState>(g, GraphSearchConstants::kFirstData + 2*nofp, i+1);
+        cH = ComputeHeuristic(samples, h2);
+        //cH = ComputeLocalHeuristic(h2);
+        delete (h2);
+        cout<<"h"<<i<<" d"<<i<<" "<<cH<<endl;
+        s = "d" + to_string(i) + " " + to_string(cH) + "\n";
+        fputs(s.c_str(), files[2]);
+        fflush(files[2]);
+        
+        // filling the total weight file
+        /*
+        s = "TotalWieght " + to_string(total) + "\n";
+        fputs(s.c_str(), files[2]);
+        fflush(files[2]);
+        */
+    }
+    fclose(files[0]);
+    fclose(files[1]);
+    fclose(files[2]);
+    
+    
+    // NRMSD approach
+    /*
+    // Samples
+    std::vector<graphState> pairs;
+    std::vector<double> pathCosts;
+    node* n;
+    cout<<"\nsamples"<<endl;
+    srandom(1931);
+    for(int i = 0; i < sl->GetNumExperiments(); i++){
+        Experiment e = sl->GetNthExperiment(i);
+        xyLoc start, goal;
+        start.x = e.GetStartX();
+        start.y = e.GetStartY();
+        goal.x = e.GetGoalX();
+        goal.y = e.GetGoalY();
+        node* startn = g->GetNode(map->GetNodeNum(start.x, start.y));
+        node* goaln = g->GetNode(map->GetNodeNum(goal.x, goal.y));
+        if(startn->GetLabelF(GraphSearchConstants::kXCoordinate - 1) == 1){
+            pairs.push_back(startn->GetNum());
+            pairs.push_back(goaln->GetNum());
+            pathCosts.push_back(e.GetDistance());
+        }
+    }
+    
+    // calculate NRMSD
+    int nofF = 2;
+    int nofH = 100;
+    std::vector<FILE*> files;
+    cout<<"Computing heuristics"<<endl;
+    for(int i=0;i<nofF;i++){
+        std::string fname = saveDirectory + std::string("/Different_Heuristics/NoE/");
+        FILE *f = fopen((fname+mapName+" - h"+ to_string(i) + "- Capt" + ".txt").c_str(), "w+");
+        files.push_back(f);
+    }
+    ResetEdgeWeights(kEdgeWeight+1);
+    srandom(123123);
+    DoDimensions(GraphSearchConstants::kFirstData, (nofH/2), 0);
+    for (int i = 0; i<nofH; i++){
+        if (i < nofH/2){
+            EmbeddingHeuristic<graphState>* hs = new EmbeddingHeuristic<graphState>(g, GraphSearchConstants::kFirstData, i + 1);
+            double cH = ComputeNRMSD(pairs, pathCosts, hs);
+            delete (hs);
+            cout<<"h"<<i<<" d"<<i + 1<<" "<<cH<<endl;
+            string s = "d" + to_string(i + 1) + " " + to_string(cH) + "\n";
+            fputs(s.c_str(), files[i / (nofH/2)]);
+            fflush(files[i / (nofH/2)]);
+        }
+        else{
+            short j = i - (nofH/2);
+            srandom(123123);
+            DoDimensions(GraphSearchConstants::kFirstData, j + 1, 1);
+            EmbeddingHeuristic<graphState>* hs = new EmbeddingHeuristic<graphState>(g, GraphSearchConstants::kFirstData, j + 1);
+            double cH = ComputeNRMSD(pairs, pathCosts, hs);
+            delete (hs);
+            cout<<"h"<<i<<" d"<<j + 1<<" "<<cH<<endl;
+            string s = "d" + to_string(j + 1) + " " + to_string(cH) + "\n";
+            fputs(s.c_str(), files[i / (nofH/2)]);
+            fflush(files[i / (nofH/2)]);
+        }
+    }
+    fclose(files[0]);
+    fclose(files[1]);
+    */
 }
 
 void NormalizeGraph()
@@ -3303,7 +3884,7 @@ void MyFrameHandler(unsigned long windowID, unsigned int viewport, void *)
             p.y=y;
             //if(i<10)
             //cout<<x<<" "<<y<<endl;
-            display.FillCircle(p, 0.02, Colors::yellow);
+            display.FillCircle(p, 0.02, Colors::red);
             /*
             if (i/2<1)
                 display.FillCircle(p, 0.02, Colors::red);
